@@ -31,7 +31,7 @@ crossweight<-function(grnTab,
 	grnTab$TF<-as.character(grnTab$TF)
 	
 	message("Calculating offsets...")
-	p <- progressr::progressor(steps = length(TF_data))
+	p <- progressr::progressor(steps = nrow(grnTab))
 	offset <- furrr::future_pmap_dbl(grnTab, function(TF, TG, ...){
 	  p()
 	  TF <- expDat[TF,]
@@ -55,7 +55,7 @@ crossweight<-function(grnTab,
 }
 
 
-cross_corr<-function(TF, TG, expDat,lag, ...){
+cross_corr<-function(TF, TG, lag){
 	x<-ccf(TF,TG,lag,pl=FALSE)
 
 	df<-data.frame(lag=x$lag,cor=abs(x$acf))
