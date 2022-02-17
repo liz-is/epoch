@@ -30,13 +30,12 @@ crossweight<-function(grnTab,
 	grnTab$TG<-as.character(grnTab$TG)
 	grnTab$TF<-as.character(grnTab$TF)
 	
-	TF_data <- lapply(grnTab$TF, function(TF) expDat[TF,])
-	TG_data <- lapply(grnTab$TG, function(TG) expDat[TG,])
-	
 	message("Calculating offsets...")
 	p <- progressr::progressor(steps = length(TF_data))
-	offset <- furrr::future_map2_dbl(TF_data, TG_data, function(TF, TG){
+	offset <- furrr::future_pmap_dbl(grnTab, function(TF, TG, ...){
 	  p()
+	  TF <- expDat[TF,]
+	  TG <- expDat[TG,]
 	  cross_corr(TF, TG, lag = lag)
 	  })
 	grnTab$offset <- offset
