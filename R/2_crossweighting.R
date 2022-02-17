@@ -12,6 +12,8 @@
 #' @return grnTab with offset and weighted_score added
 #' 
 #' @export
+#' @importFrom furrr future_pmap_dbl future_map2_dbl
+#' @importFrom progressr progressor
 #'
 crossweight<-function(grnTab,
 					expDat,
@@ -27,37 +29,41 @@ crossweight<-function(grnTab,
 
 	grnTab$TG<-as.character(grnTab$TG)
 	grnTab$TF<-as.character(grnTab$TF)
-
-	offset<-apply(grnTab,1,cross_corr,expDat=expDat,lag=lag)
-	grnTab$offset<-offset
-
-	weighted_score<-c()
-	for (i in 1:nrow(grnTab)){
-		new<-score_offset(grnTab$zscore[i],grnTab$offset[i],min=min,max=max,symmetric_filter=symmetric_filter)
-		weighted_score<-c(weighted_score,new)
-	}
-
-	grnTab$weighted_score<-weighted_score
-
+	
+	TF_data <- lapply(grnTab$TF, function(TF) expDat[TF,])
+	TG_data <- lapply(grnTab$TG, function(TG) expDat[TG,])
+	
+	message("Calculating offsets...")
+	p <- progressr::progressor(steps = length(TF_data))
+	offset <- furrr::future_map2_dbl(TF_data, TG_data, function(TF, TG){
+	  p()
+	  cross_corr(TF, TG, lag = lag)
+	  })
+	grnTab$offset <- offset
+	
+	message("Calculating weights...")
+	p <- progressr::progressor(steps = nrow(grnTab))
+	weighted_score <- furrr::future_pmap_dbl(grnTab, function(zscore, offset, ...) {
+	  p()
+	  score_offset(score = zscore, offset = offset, min = min, max = max, 
+	               symmetric_filter = symmetric_filter)
+	  })
+  grnTab$weighted_score <- weighted_score
+  
 	grnTab<-grnTab[grnTab$weighted_score>filter_thresh,]
 
-	grnTab
+	return(grnTab)
 }
 
 
-cross_corr<-function(grn_row,expDat,lag){
-
-	tg<-grn_row[1]
-	tf<-grn_row[2]
-
-	x<-ccf(as.numeric(expDat[tf,]),as.numeric(expDat[tg,]),lag,pl=FALSE)
+cross_corr<-function(TF, TG, expDat,lag, ...){
+	x<-ccf(TF,TG,lag,pl=FALSE)
 
 	df<-data.frame(lag=x$lag,cor=abs(x$acf))
-    df<-df[order(df$cor,decreasing=TRUE),]
-    offset<-mean(df$lag[1:ceiling((2/3)*lag)])
+  df<-df[order(df$cor,decreasing=TRUE),]
+  offset<-mean(df$lag[1:ceiling((2/3)*lag)])
 
-    offset
-
+  return(offset)
 }
 
 score_offset<-function(score,offset,min=2,max=20,symmetric_filter=FALSE){
